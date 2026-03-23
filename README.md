@@ -11,6 +11,7 @@ Go (Gin) API backend for Stellabill — subscription and billing plans API. This
 - [Local setup](#local-setup)
 - [Configuration](#configuration)
 - [API reference](#api-reference)
+- [Database migrations](#database-migrations)
 - [Contributing (open source)](#contributing-open-source)
 - [Project layout](#project-layout)
 - [License](#license)
@@ -118,6 +119,18 @@ Base URL (local): `http://localhost:8080`
 | GET    | `/api/subscriptions/:id` | Get one subscription     |
 
 All JSON responses. CORS allowed for `*` origin with common methods and headers.
+
+---
+
+## Database migrations
+
+Migrations live in `migrations/` and are applied with:
+
+```bash
+go run ./cmd/migrate up
+```
+
+See `docs/migrations.md` for conventions and a production runbook.
 
 ---
 
