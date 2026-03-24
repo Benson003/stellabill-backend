@@ -2,10 +2,11 @@ package main
 
 import (
 	"log"
-	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/config"
+	"stellarbill-backend/internal/middleware"
 	"stellarbill-backend/internal/routes"
 )
 
@@ -15,15 +16,24 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := gin.Default()
-	routes.Register(router)
+	router := newRouter()
 
 	addr := ":" + cfg.Port
-	if p := os.Getenv("PORT"); p != "" {
-		addr = ":" + p
-	}
 	log.Printf("Stellarbill backend listening on %s", addr)
 	if err := router.Run(addr); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func newRouter() *gin.Engine {
+	router := gin.New()
+	router.Use(
+		middleware.Recovery(log.Default()),
+		middleware.RequestID(),
+		middleware.Logging(log.Default()),
+		middleware.CORS("*"),
+		middleware.RateLimit(middleware.NewRateLimiter(60, time.Minute)),
+	)
+	routes.Register(router)
+	return router
 }
