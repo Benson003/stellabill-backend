@@ -1,45 +1,113 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
-func TestLoad_Defaults(t *testing.T) {
-	t.Setenv("ENV", "")
-	t.Setenv("PORT", "")
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("JWT_SECRET", "")
+const validTestSecret = "MySecureSecret123!@#$%^&*()AbCdEfGh"
 
-	cfg := Load()
-	if cfg.Env != "development" {
-		t.Fatalf("Env: got %q want %q", cfg.Env, "development")
+func withEnvVars(t *testing.T, vars map[string]string, fn func()) {
+	origEnv := make(map[string]string)
+	for k := range vars {
+		origEnv[k] = os.Getenv(k)
+		if vars[k] == "" {
+			os.Unsetenv(k)
+		} else {
+			os.Setenv(k, vars[k])
+		}
 	}
-	if cfg.Port != "8080" {
-		t.Fatalf("Port: got %q want %q", cfg.Port, "8080")
-	}
-	if cfg.DBConn == "" {
-		t.Fatalf("DBConn: expected non-empty default")
-	}
-	if cfg.JWTSecret != "change-me-in-production" {
-		t.Fatalf("JWTSecret: got %q want %q", cfg.JWTSecret, "change-me-in-production")
-	}
+
+	defer func() {
+		for k, v := range origEnv {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
+		}
+	}()
+
+	fn()
 }
 
-func TestLoad_Overrides(t *testing.T) {
-	t.Setenv("ENV", "production")
-	t.Setenv("PORT", "9999")
-	t.Setenv("DATABASE_URL", "postgres://example/db")
-	t.Setenv("JWT_SECRET", "secret")
+func TestLoad_WithMissingRequiredVars(t *testing.T) {
+	withEnvVars(t, map[string]string{
+		"DATABASE_URL": "",
+		"JWT_SECRET":   "",
+		"PORT":         "",
+	}, func() {
+		_, err := Load()
+		if err == nil {
+			t.Error("Expected error for missing required env vars, got nil")
+		}
+		if !strings.Contains(err.Error(), "MISSING_ENV_VAR") {
+			t.Errorf("Expected MISSING_ENV_VAR error, got: %s", err.Error())
+		}
+	})
+}
 
-	cfg := Load()
-	if cfg.Env != "production" {
-		t.Fatalf("Env: got %q want %q", cfg.Env, "production")
+func TestLoad_WithValidConfig(t *testing.T) {
+	withEnvVars(t, map[string]string{
+		"DATABASE_URL": "postgres://user:pass@localhost/db",
+		"JWT_SECRET":   validTestSecret,
+		"PORT":         "8080",
+		"ENV":          "development",
+	}, func() {
+		cfg, err := Load()
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		if cfg.Port != 8080 {
+			t.Errorf("Expected port 8080, got %d", cfg.Port)
+		}
+		if cfg.DBConn != "postgres://user:pass@localhost/db" {
+			t.Errorf("Expected DBConn, got %s", cfg.DBConn)
+		}
+		if cfg.JWTSecret != validTestSecret {
+			t.Errorf("Expected JWTSecret, got %s", cfg.JWTSecret)
+		}
+	})
+}
+
+func TestLoad_WithInvalidPort(t *testing.T) {
+	withEnvVars(t, map[string]string{
+		"DATABASE_URL": "postgres://user:pass@localhost/db",
+		"JWT_SECRET":   validTestSecret,
+		"PORT":         "invalid",
+	}, func() {
+		_, err := Load()
+		if err == nil {
+			t.Error("Expected error for invalid port, got nil")
+		}
+		if !strings.Contains(err.Error(), "INVALID_PORT") {
+			t.Errorf("Expected INVALID_PORT error, got: %s", err.Error())
+		}
+	})
+}
+
+func TestLoad_WithInvalidDatabaseURL(t *testing.T) {
+	withEnvVars(t, map[string]string{
+		"DATABASE_URL": "://localhost",
+		"JWT_SECRET":   validTestSecret,
+		"PORT":         "8080",
+	}, func() {
+		_, err := Load()
+		if err == nil {
+			t.Error("Expected error for invalid DATABASE_URL, got nil")
+		}
+		if !strings.Contains(err.Error(), "INVALID_URL") {
+			t.Errorf("Expected INVALID_URL error, got: %s", err.Error())
+		}
+	})
+}
+
+func TestIsValidSecret(t *testing.T) {
+	if !isValidSecret(validTestSecret) {
+		t.Fatal("expected validTestSecret to pass")
 	}
-	if cfg.Port != "9999" {
-		t.Fatalf("Port: got %q want %q", cfg.Port, "9999")
-	}
-	if cfg.DBConn != "postgres://example/db" {
-		t.Fatalf("DBConn: got %q want %q", cfg.DBConn, "postgres://example/db")
-	}
-	if cfg.JWTSecret != "secret" {
-		t.Fatalf("JWTSecret: got %q want %q", cfg.JWTSecret, "secret")
+	if isValidSecret("short") {
+		t.Fatal("expected short secret to fail")
 	}
 }
