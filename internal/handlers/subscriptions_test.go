@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-
 	"stellarbill-backend/internal/service"
 )
 
@@ -23,9 +22,13 @@ func (m *mockSubscriptionService) GetDetail(_ context.Context, _, _ string) (*se
 	return m.detail, m.warnings, m.err
 }
 
-// setupRouter builds a minimal Gin router with the handler wired up.
+func (m *mockSubscriptionService) ListSubscriptions(_ context.Context) ([]Subscription, error) {
+	return nil, nil
+}
+
+// setupRouter builds a minimal Gin router with the Handler wired up.
 // If setCallerID is true, a middleware injects "callerID" into the context.
-func setupRouter(svc service.SubscriptionService, setCallerID bool) *gin.Engine {
+func setupRouter(svc *mockSubscriptionService, setCallerID bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	if setCallerID {
@@ -34,8 +37,23 @@ func setupRouter(svc service.SubscriptionService, setCallerID bool) *gin.Engine 
 			c.Next()
 		})
 	}
-	r.GET("/api/subscriptions/:id", NewGetSubscriptionHandler(svc))
+	h := &Handler{Subscriptions: svc}
+	r.GET("/api/subscriptions/:id", h.GetSubscription)
 	return r
+}
+
+func TestListSubscriptions_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &mockSubscriptionService{}
+	h := &Handler{Subscriptions: svc}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	h.ListSubscriptions(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
 }
 
 func TestGetSubscription_MissingCallerID_Returns401(t *testing.T) {
@@ -192,7 +210,6 @@ func TestGetSubscription_HappyPath_Returns200WithEnvelope(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&envelope); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-
 	if envelope["api_version"] != "1" {
 		t.Errorf("expected api_version=1, got %v", envelope["api_version"])
 	}

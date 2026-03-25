@@ -20,9 +20,12 @@ type Subscription struct {
 	NextBilling string `json:"next_billing,omitempty"`
 }
 
-func ListSubscriptions(c *gin.Context) {
-	// TODO: load from DB, filter by merchant from JWT/API key
-	subscriptions := []Subscription{}
+func (h *Handler) ListSubscriptions(c *gin.Context) {
+	subscriptions, err := h.Subscriptions.ListSubscriptions(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"subscriptions": subscriptions})
 }
 
@@ -58,33 +61,31 @@ func NewGetSubscriptionHandler(svc service.SubscriptionService) gin.HandlerFunc 
 			return
 		}
 
-		// 3. Call service.
-		detail, warnings, err := svc.GetDetail(c.Request.Context(), callerID.(string), id)
-		if err != nil {
-			c.Header("Content-Type", "application/json; charset=utf-8")
-			switch err {
-			case service.ErrNotFound:
-				c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
-			case service.ErrDeleted:
-				c.JSON(http.StatusGone, gin.H{"error": "subscription has been deleted"})
-			case service.ErrForbidden:
-				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			case service.ErrBillingParse:
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-			default:
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-			}
-			return
-		}
-
-		// 4. Set Content-Type and respond with envelope.
+	// 2. Validate :id path param.
+	id := c.Param("id")
+	if strings.TrimSpace(id) == "" {
 		c.Header("Content-Type", "application/json; charset=utf-8")
-		envelope := service.ResponseEnvelope{
-			APIVersion: "1",
-			Data:       detail,
-			Warnings:   warnings,
+		c.JSON(http.StatusBadRequest, gin.H{"error": "subscription id required"})
+		return
+	}
+
+	// 3. Call service.
+	detail, warnings, err := h.Subscriptions.GetDetail(c.Request.Context(), callerID.(string), id)
+	if err != nil {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		switch err {
+		case service.ErrNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+		case service.ErrDeleted:
+			c.JSON(http.StatusGone, gin.H{"error": "subscription has been deleted"})
+		case service.ErrForbidden:
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		case service.ErrBillingParse:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		}
-		c.JSON(http.StatusOK, envelope)
+		return
 	}
 }
 
