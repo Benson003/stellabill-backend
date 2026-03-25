@@ -1,18 +1,18 @@
 package routes
 
 import (
+	"os"
 	"stellarbill-backend/internal/config"
 	"stellarbill-backend/internal/cors"
-	"stellarbill-backend/internal/handlers"
-	"os"
-
-	"github.com/gin-gonic/gin"
-	"stellarbill-backend/internal/config"
 	"stellarbill-backend/internal/handlers"
 	"stellarbill-backend/internal/idempotency"
 	"stellarbill-backend/internal/middleware"
 	"stellarbill-backend/internal/repository"
 	"stellarbill-backend/internal/service"
+
+	"stellarbill-backend/internal/auth"
+
+	"github.com/gin-gonic/gin"
 )
 
 func Register(r *gin.Engine) {
@@ -30,6 +30,9 @@ func Register(r *gin.Engine) {
 	subRepo := repository.NewMockSubscriptionRepo()
 	planRepo := repository.NewMockPlanRepo()
 	svc := service.NewSubscriptionService(subRepo, planRepo)
+
+	stmtRepo := repository.NewMockStatementRepo()
+	stmtSvc := service.NewStatementService(subRepo, stmtRepo)
 
 	api := r.Group("/api")
 	api.Use(idempotency.Middleware(store))
@@ -58,6 +61,9 @@ func Register(r *gin.Engine) {
 		api.GET("/subscriptions", handlers.ListSubscriptions)
 		api.GET("/subscriptions/:id", middleware.AuthMiddleware(jwtSecret), handlers.NewGetSubscriptionHandler(svc))
 		api.GET("/plans", handlers.ListPlans)
+
+		api.GET("/statements/:id", middleware.AuthMiddleware(jwtSecret), handlers.NewGetStatementHandler(stmtSvc))
+		api.GET("/statements", middleware.AuthMiddleware(jwtSecret), handlers.NewListStatementsHandler(stmtSvc))
 
 		admin := api.Group("/admin")
 		{
