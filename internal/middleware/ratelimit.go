@@ -37,12 +37,13 @@ type RateLimiterConfig struct {
 	Enabled        bool          // Enable/disable rate limiting
 }
 
-// RateLimiter manages multiple token buckets for rate limiting
-type RateLimiter struct {
-	config  RateLimiterConfig
-	buckets map[string]*TokenBucket
-	mutex   sync.RWMutex
-	cleanup *time.Ticker
+// APIRateLimiter manages multiple token buckets for rate limiting
+type APIRateLimiter struct {
+	config   RateLimiterConfig
+	buckets  map[string]*TokenBucket
+	mutex    sync.RWMutex
+	cleanup  *time.Ticker
+	stopChan chan struct{}
 }
 
 // NewTokenBucket creates a new token bucket
@@ -90,12 +91,13 @@ func (tb *TokenBucket) allowRequest() bool {
 	return false
 }
 
-// NewRateLimiter creates a new rate limiter
-func NewRateLimiter(config RateLimiterConfig) *RateLimiter {
-	rl := &RateLimiter{
-		config:  config,
-		buckets: make(map[string]*TokenBucket),
-		cleanup: time.NewTicker(5 * time.Minute), // Cleanup every 5 minutes
+// NewAPIRateLimiter creates a new API rate limiter
+func NewAPIRateLimiter(config RateLimiterConfig) *APIRateLimiter {
+	rl := &APIRateLimiter{
+		config:   config,
+		buckets:  make(map[string]*TokenBucket),
+		cleanup:  time.NewTicker(5 * time.Minute), // Cleanup every 5 minutes
+		stopChan: make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -105,26 +107,39 @@ func NewRateLimiter(config RateLimiterConfig) *RateLimiter {
 }
 
 // cleanupExpiredBuckets removes unused buckets to prevent memory leaks
-func (rl *RateLimiter) cleanupExpiredBuckets() {
-	for range rl.cleanup.C {
-		rl.mutex.Lock()
-		now := time.Now()
+func (rl *APIRateLimiter) cleanupExpiredBuckets() {
+	for {
+		select {
+		case <-rl.cleanup.C:
+			rl.mutex.Lock()
+			now := time.Now()
 
-		for key, bucket := range rl.buckets {
-			bucket.mutex.Lock()
-			// Remove buckets that haven't been used for 10 minutes
-			if now.Sub(bucket.lastRefill) > 10*time.Minute {
-				delete(rl.buckets, key)
+			for key, bucket := range rl.buckets {
+				bucket.mutex.Lock()
+				// Remove buckets that haven't been used for 10 minutes
+				if now.Sub(bucket.lastRefill) > 10*time.Minute {
+					delete(rl.buckets, key)
+				}
+				bucket.mutex.Unlock()
 			}
-			bucket.mutex.Unlock()
-		}
 
-		rl.mutex.Unlock()
+			rl.mutex.Unlock()
+		case <-rl.stopChan:
+			return
+		}
+	}
+}
+
+// Stop stops the cleanup goroutine to prevent goroutine leaks
+func (rl *APIRateLimiter) Stop() {
+	if rl.cleanup != nil {
+		rl.cleanup.Stop()
+		close(rl.stopChan)
 	}
 }
 
 // getBucket retrieves or creates a token bucket for the given key
-func (rl *RateLimiter) getBucket(key string) *TokenBucket {
+func (rl *APIRateLimiter) getBucket(key string) *TokenBucket {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 
@@ -143,7 +158,7 @@ func (rl *RateLimiter) getBucket(key string) *TokenBucket {
 }
 
 // getKey determines the rate limiting key based on mode and request
-func (rl *RateLimiter) getKey(c *gin.Context) string {
+func (rl *APIRateLimiter) getKey(c *gin.Context) string {
 	switch rl.config.Mode {
 	case ModeIP:
 		return getClientIP(c)
@@ -194,8 +209,8 @@ func getClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// isWhitelisted checks if the path is excluded from rate limiting
-func (rl *RateLimiter) isWhitelisted(path string) bool {
+// isWhitelisted checks if a path should be excluded from rate limiting
+func (rl *APIRateLimiter) isWhitelisted(path string) bool {
 	for _, whitelistPath := range rl.config.WhitelistPaths {
 		if path == whitelistPath {
 			return true
@@ -217,7 +232,7 @@ func RateLimitMiddleware(config RateLimiterConfig) gin.HandlerFunc {
 		config.Mode = ModeIP // Default mode
 	}
 
-	limiter := NewRateLimiter(config)
+	limiter := NewAPIRateLimiter(config)
 
 	return func(c *gin.Context) {
 		// Skip rate limiting if disabled or path is whitelisted
@@ -256,12 +271,5 @@ func RateLimitMiddleware(config RateLimiterConfig) gin.HandlerFunc {
 		c.Header("X-RateLimit-Reset", time.Now().Add(time.Second).Format(time.RFC3339))
 
 		c.Next()
-	}
-}
-
-// Stop stops the rate limiter cleanup goroutine
-func (rl *RateLimiter) Stop() {
-	if rl.cleanup != nil {
-		rl.cleanup.Stop()
 	}
 }

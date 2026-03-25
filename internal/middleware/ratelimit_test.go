@@ -65,7 +65,7 @@ func TestRateLimiter_GetKey_IPMode(t *testing.T) {
 	config := RateLimiterConfig{
 		Mode: ModeIP,
 	}
-	rl := NewRateLimiter(config)
+	rl := NewAPIRateLimiter(config)
 
 	// Test with different client IPs
 	testCases := []struct {
@@ -126,7 +126,7 @@ func TestRateLimiter_GetKey_UserMode(t *testing.T) {
 	config := RateLimiterConfig{
 		Mode: ModeUser,
 	}
-	rl := NewRateLimiter(config)
+	rl := NewAPIRateLimiter(config)
 
 	// Test with authenticated user
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -150,7 +150,7 @@ func TestRateLimiter_GetKey_HybridMode(t *testing.T) {
 	config := RateLimiterConfig{
 		Mode: ModeHybrid,
 	}
-	rl := NewRateLimiter(config)
+	rl := NewAPIRateLimiter(config)
 
 	// Test with authenticated user
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -178,7 +178,7 @@ func TestRateLimiter_Whitelist(t *testing.T) {
 		BurstSize:      1,
 		WhitelistPaths: []string{"/api/health", "/api/status"},
 	}
-	rl := NewRateLimiter(config)
+	rl := NewAPIRateLimiter(config)
 
 	// Test whitelisted paths
 	testCases := []struct {
@@ -463,7 +463,8 @@ func TestRateLimiter_CleanupExpiredBuckets(t *testing.T) {
 		WhitelistPaths: []string{},
 	}
 
-	rl := NewRateLimiter(config)
+	rl := NewAPIRateLimiter(config)
+	defer rl.Stop() // Ensure cleanup goroutine is stopped
 
 	// Create some buckets
 	c1, _ := gin.CreateTestContext(httptest.NewRecorder())

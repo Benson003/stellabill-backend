@@ -1,36 +1,22 @@
 package routes
 
 import (
-	"stellarbill-backend/internal/config"
-	"stellarbill-backend/internal/cors"
-	"stellarbill-backend/internal/handlers"
 	"os"
 
-	"github.com/gin-gonic/gin"
 	"stellarbill-backend/internal/config"
+	"stellarbill-backend/internal/cors"
 	"stellarbill-backend/internal/handlers"
 	"stellarbill-backend/internal/idempotency"
 	"stellarbill-backend/internal/middleware"
 	"stellarbill-backend/internal/repository"
 	"stellarbill-backend/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 func Register(r *gin.Engine) {
 	cfg := config.Load()
 	corsProfile := cors.ProfileForEnv(cfg.Env, cfg.AllowedOrigins)
-
-	// Load configuration for rate limiting
-	cfg, err := config.Load()
-	if err != nil {
-		// Use defaults if config loading fails
-		cfg = config.Config{
-			RateLimitEnabled: true,
-			RateLimitMode:    "ip",
-			RateLimitRPS:     10,
-			RateLimitBurst:   20,
-			RateLimitWhitelist: []string{"/api/health"},
-		}
-	}
 
 	// Apply rate limiting middleware
 	rateLimitConfig := middleware.RateLimiterConfig{
@@ -78,15 +64,5 @@ func Register(r *gin.Engine) {
 
 		// Example future admin-only endpoints:
 		// api.POST("/plans", auth.RequirePermission(auth.PermManagePlans), ...)
-		api.GET("/subscriptions", handlers.ListSubscriptions)
-		api.GET("/subscriptions/:id", middleware.AuthMiddleware(jwtSecret), handlers.NewGetSubscriptionHandler(svc))
-		api.GET("/plans", handlers.ListPlans)
-
-		admin := api.Group("/admin")
-		{
-			admin.POST("/purge", adminHandler.PurgeCache)
-		}
 	}
-
-	return nil
 }
