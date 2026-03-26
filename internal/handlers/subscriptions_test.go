@@ -37,6 +37,7 @@ func setupRouter(svc *mockSubscriptionService, setCallerID bool) *gin.Engine {
 	if setCallerID {
 		r.Use(func(c *gin.Context) {
 			c.Set("callerID", "caller-123")
+			c.Set("tenantID", "tenant-1")
 			c.Next()
 		})
 	}
@@ -82,6 +83,7 @@ func TestGetSubscription_EmptyID_Returns400(t *testing.T) {
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		c.Set("callerID", "caller-123")
+		c.Set("tenantID", "tenant-1")
 		c.Next()
 	})
 	r.GET("/api/subscriptions/:id", NewGetSubscriptionHandler(&mockSubscriptionService{}))

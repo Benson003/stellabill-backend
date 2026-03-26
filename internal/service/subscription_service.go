@@ -12,7 +12,7 @@ import (
 
 // SubscriptionService defines the business logic interface for subscriptions.
 type SubscriptionService interface {
-	GetDetail(ctx context.Context, callerID string, subscriptionID string) (*SubscriptionDetail, []string, error)
+	GetDetail(ctx context.Context, tenantID string, callerID string, subscriptionID string) (*SubscriptionDetail, []string, error)
 }
 
 // subscriptionService is the concrete implementation of SubscriptionService.
@@ -33,8 +33,8 @@ func NewSubscriptionService(subRepo repository.SubscriptionRepository, planRepo 
 func (s *subscriptionService) GetDetail(ctx context.Context, callerID string, subscriptionID string) (*SubscriptionDetail, []string, error) {
 	var warnings []string
 
-	// 1. Fetch subscription row.
-	row, err := s.subRepo.FindByID(ctx, subscriptionID)
+	// 1. Fetch subscription row scoped to tenant.
+	row, err := s.subRepo.FindByIDAndTenant(ctx, subscriptionID, tenantID)
 	if err != nil {
 		if err == repository.ErrNotFound {
 			return nil, nil, ErrNotFound
